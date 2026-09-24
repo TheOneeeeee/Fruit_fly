@@ -1,8 +1,108 @@
-# Emulation of the *Drosophila Fly* Brain
+# Fly Brain
 
-Whole-brain leaky integrate-and-fire model of the adult fruit fly, built from the
-[FlyWire](https://flywire.ai/) connectome (~138k neurons, ~5M synapses).
-Activate and silence arbitrary neurons; observe downstream spike propagation.
+A real fruit fly brain, downloaded from the [FlyWire](https://flywire.ai/) connectome
+(~139k real neurons, ~3.7M real synapses), driving two virtual flies around a small
+pixel-art world in real time.
+
+This repo has two things in it:
+
+1. **The Fly Brain Game** — the fun part. Clone it, get the data, run it. Start below.
+2. **A connectome benchmarking framework** — the research tool this project is built on
+   top of (Brian2, PyTorch, NEST GPU, GeNN backends). Only needed if you care about raw
+   simulation performance across frameworks — see [Benchmarking framework](#benchmarking-framework-advanced)
+   further down.
+
+## Quick start — play with it
+
+Two virtual fruit flies living in a small pixel-art world, with every
+decision they make driven by the real FlyWire connectome — not a scripted
+behavior tree. It's a real-time pygame app with a live "brain panel"
+showing which real neurons are firing as the flies forage, court, and get
+hunted.
+
+This part doesn't need a GPU or CUDA — it runs a lightweight
+leaky-integrate-and-fire (LIF) simulation over a small subgraph on CPU.
+
+### What you need
+
+- **Python 3.10+**
+- **pygame**, **numpy**, **pandas**, **scipy**, **pyarrow**
+- One more FlyWire data file (see below) — everything else is already in the repo
+
+```bash
+conda create -n fly-game python=3.10 -y
+conda activate fly-game
+pip install pygame numpy pandas scipy pyarrow
+```
+
+(If you're also setting up the [benchmarking framework](#benchmarking-framework-advanced),
+you can reuse its `brain-fly` conda environment instead — it already has
+numpy/pandas/scipy/pyarrow; just add `pip install pygame`.)
+
+### Get the connectome data
+
+The connectivity file is already committed. You only need to download one more
+file, from [codex.flywire.ai](https://codex.flywire.ai/) (free, requires a
+FlyWire/Codex account), and place it under `data/`:
+
+| File | What it is |
+|---|---|
+| `data/2025_Connectivity_783.parquet` | Every synaptic connection, with its real excitatory/inhibitory weight — **already in this repo**, nothing to do |
+| `data/flywire_annotations.tsv` | Per-neuron metadata — `root_id`, `soma_x/y/z`, `cell_class`, `cell_sub_class`, `cell_type`, `super_class`, `side` — **you need to download this one** |
+
+`flywire_annotations.tsv` is gitignored on purpose (it's easy to
+re-download and doesn't need to live in the repo history).
+
+### Build the working subgraph (one-time)
+
+The game doesn't run on the full ~139k-neuron connectome — it expands
+outward from a set of seed populations (taste, vision, smell, fear,
+reward/punish, mating, descending output, ...) to a ~10,700-neuron
+subgraph that's fast enough to simulate live:
+
+```bash
+python build_subgraph.py
+```
+
+This reads the two files above and writes `data/subgraph_ids.npy`,
+`data/subgraph_owner.npy`, and `data/subgraph_weights.npz` — also
+gitignored, since they're generated and deterministic from the source data.
+
+### Run it
+
+```bash
+python fly_game.py
+```
+
+Controls:
+
+| Key | Effect |
+|---|---|
+| `O` | Observation mode — hides debug stats/UI for a clean view |
+| `T` | Toggle the title card / artist statement |
+
+The population persists between runs (`data/sim_state.json`, also
+gitignored — it's regenerated the first time you run the game) so genomes,
+generation count, and lineage carry over rather than resetting each launch.
+
+## License
+
+This project is [GPL-2.0-or-later](LICENSE) — in short, you're free to use, modify,
+fork, and share it, including for your own projects, as long as anything you
+distribute based on it stays open source under the same license. A couple of files
+adapted from other projects keep their original license notices in place (noted
+inline where that applies) — everything else in this repo is GPL-2.0-or-later.
+
+---
+
+## Benchmarking framework (advanced)
+
+Everything below this point is the original research tool the Fly Brain Game is
+built on top of — a whole-brain leaky integrate-and-fire model that benchmarks
+identical simulations across five different frameworks/backends (Brian2, Brian2CUDA,
+PyTorch, NEST GPU, GeNN). You don't need any of this to run the game above; it's here
+for anyone who wants to dig into the simulation internals or reproduce the benchmark
+numbers.
 
 Based on the paper
 [*A leaky integrate-and-fire computational model based on the connectome of the
@@ -297,7 +397,7 @@ and folder structure. The five main backends run from `brain-fly` plus a
 system-level NEST GPU install; Brian2GeNN runs from `brain-fly-brian2genn`
 because of its Brian2 version pin.
 
-## Quickstart
+## Benchmark quickstart
 
 ```bash
 # Create the conda environment (includes CUDA-enabled PyTorch)
@@ -347,81 +447,6 @@ python main.py --brian2genn --paper --run-label nature_2026_07
 | `--no_log_file` | Console output only |
 
 Backend flags are combinable: `--brian2-cpu --pytorch` runs Brian2 CPU then PyTorch.
-
-## Fly Brain Game — an interactive behavioral simulation
-
-On top of the benchmarking framework above, this repo also has a **playable
-simulation**: two virtual fruit flies living in a small pixel-art world,
-with every decision they make driven by the real FlyWire connectome — not a
-scripted behavior tree. It's a real-time pygame app with a live "brain
-panel" showing which real neurons are firing as the flies forage, court,
-and get hunted.
-
-This part doesn't need a GPU or CUDA — it runs a lightweight
-leaky-integrate-and-fire (LIF) simulation over a small subgraph on CPU.
-
-### What you need
-
-- **Python 3.10+**
-- **pygame**, **numpy**, **pandas**, **scipy**, **pyarrow**
-- The FlyWire FAFB v783 connectome data (see below) — this is *not* checked
-  into the repo; it's ~30–100 MB and you download it yourself
-
-```bash
-conda create -n fly-game python=3.10 -y
-conda activate fly-game
-pip install pygame numpy pandas scipy pyarrow
-```
-
-(You can also reuse the `brain-fly` conda environment from the Quickstart
-above — it already has numpy/pandas/scipy/pyarrow; just add `pip install
-pygame`.)
-
-### Get the connectome data
-
-Download the FlyWire FAFB v783 release from [codex.flywire.ai](https://codex.flywire.ai/)
-(free, requires a FlyWire/Codex account) and place these two files under `data/`:
-
-| File | What it is |
-|---|---|
-| `data/2025_Connectivity_783.parquet` | Every synaptic connection, with its real excitatory/inhibitory weight |
-| `data/flywire_annotations.tsv` | Per-neuron metadata — `root_id`, `soma_x/y/z`, `cell_class`, `cell_sub_class`, `cell_type`, `super_class`, `side` |
-
-Both are gitignored on purpose — they're large, FlyWire's own release, and
-easy to re-download, so they don't belong in the repo history.
-
-### Build the working subgraph (one-time)
-
-The game doesn't run on the full ~139k-neuron connectome — it expands
-outward from a set of seed populations (taste, vision, smell, fear,
-reward/punish, mating, descending output, ...) to a ~10,700-neuron
-subgraph that's fast enough to simulate live:
-
-```bash
-python build_subgraph.py
-```
-
-This reads the two files above and writes `data/subgraph_ids.npy`,
-`data/subgraph_owner.npy`, and `data/subgraph_weights.npz` — also
-gitignored, since they're generated and deterministic from the source data.
-
-### Run it
-
-```bash
-python fly_game.py
-```
-
-Controls:
-
-| Key | Effect |
-|---|---|
-| `O` | Observation mode — hides debug stats/UI for a clean view |
-| `T` | Toggle the title card / artist statement |
-
-The population persists between runs (`data/sim_state.json`, also
-gitignored — it's regenerated the first time you run the game) so genomes,
-generation count, and lineage carry over rather than resetting each launch.
-
 
 ## Project structure
 
@@ -486,14 +511,3 @@ Legacy version 630 data is kept in `data/archive/` for paper figure reproduction
 - Miniconda / Anaconda
 - NEST GPU compiled from source (for `--nestgpu` backend)
 - `scripts/setup_WSL_CUDA.sh` documents the full setup from a fresh Windows machine
-
-## License
-
-Except where otherwise noted, this project is licensed under the GNU General
-Public License version 2 or any later version
-(`GPL-2.0-or-later`). See [LICENSE](LICENSE).
-
-Third-party components retain their original notices. In particular, the
-Shiu et al. Brian2 materials in `code/paper-phil-drosophila/` remain available
-under their upstream [MIT License](code/paper-phil-drosophila/LICENSE), and the
-adapted NEST GPU model files retain their GPL-2.0-or-later notices.
