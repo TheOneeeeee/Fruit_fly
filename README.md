@@ -348,6 +348,81 @@ python main.py --brian2genn --paper --run-label nature_2026_07
 
 Backend flags are combinable: `--brian2-cpu --pytorch` runs Brian2 CPU then PyTorch.
 
+## Fly Brain Game — an interactive behavioral simulation
+
+On top of the benchmarking framework above, this repo also has a **playable
+simulation**: two virtual fruit flies living in a small pixel-art world,
+with every decision they make driven by the real FlyWire connectome — not a
+scripted behavior tree. It's a real-time pygame app with a live "brain
+panel" showing which real neurons are firing as the flies forage, court,
+and get hunted.
+
+This part doesn't need a GPU or CUDA — it runs a lightweight
+leaky-integrate-and-fire (LIF) simulation over a small subgraph on CPU.
+
+### What you need
+
+- **Python 3.10+**
+- **pygame**, **numpy**, **pandas**, **scipy**, **pyarrow**
+- The FlyWire FAFB v783 connectome data (see below) — this is *not* checked
+  into the repo; it's ~30–100 MB and you download it yourself
+
+```bash
+conda create -n fly-game python=3.10 -y
+conda activate fly-game
+pip install pygame numpy pandas scipy pyarrow
+```
+
+(You can also reuse the `brain-fly` conda environment from the Quickstart
+above — it already has numpy/pandas/scipy/pyarrow; just add `pip install
+pygame`.)
+
+### Get the connectome data
+
+Download the FlyWire FAFB v783 release from [codex.flywire.ai](https://codex.flywire.ai/)
+(free, requires a FlyWire/Codex account) and place these two files under `data/`:
+
+| File | What it is |
+|---|---|
+| `data/2025_Connectivity_783.parquet` | Every synaptic connection, with its real excitatory/inhibitory weight |
+| `data/flywire_annotations.tsv` | Per-neuron metadata — `root_id`, `soma_x/y/z`, `cell_class`, `cell_sub_class`, `cell_type`, `super_class`, `side` |
+
+Both are gitignored on purpose — they're large, FlyWire's own release, and
+easy to re-download, so they don't belong in the repo history.
+
+### Build the working subgraph (one-time)
+
+The game doesn't run on the full ~139k-neuron connectome — it expands
+outward from a set of seed populations (taste, vision, smell, fear,
+reward/punish, mating, descending output, ...) to a ~10,700-neuron
+subgraph that's fast enough to simulate live:
+
+```bash
+python build_subgraph.py
+```
+
+This reads the two files above and writes `data/subgraph_ids.npy`,
+`data/subgraph_owner.npy`, and `data/subgraph_weights.npz` — also
+gitignored, since they're generated and deterministic from the source data.
+
+### Run it
+
+```bash
+python fly_game.py
+```
+
+Controls:
+
+| Key | Effect |
+|---|---|
+| `O` | Observation mode — hides debug stats/UI for a clean view |
+| `T` | Toggle the title card / artist statement |
+
+The population persists between runs (`data/sim_state.json`, also
+gitignored — it's regenerated the first time you run the game) so genomes,
+generation count, and lineage carry over rather than resetting each launch.
+
+
 ## Project structure
 
 ```
